@@ -15,37 +15,10 @@ const generateToken = (userId) => {
     });
 };
 
-// CORS middleware for auth routes
-const corsMiddleware = (req, res, next) => {
-    // Allow all origins for now (in production, specify your Vercel domain)
-    const allowedOrigins = [
-        'http://localhost:3000',
-        'http://127.0.0.1:5500', // Live Server
-        'http://localhost:5000',
-        'https://aklat-backend.onrender.com',
-        'https://your-vercel-app.vercel.app', // Replace with your Vercel URL
-        'https://aklat.vercel.app' // If this is your domain
-    ];
-    
-    const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin) || !origin) {
-        res.header('Access-Control-Allow-Origin', origin || '*');
-    }
-    
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    
-    next();
-};
-
-// Apply CORS middleware to all auth routes
-router.use(corsMiddleware);
+// ================== REMOVE CORS MIDDLEWARE FROM HERE ==================
+// CORS is now handled in the main server.js file
+// Delete the entire corsMiddleware function below
+// ======================================================================
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -54,13 +27,21 @@ router.get('/health', (req, res) => {
         message: 'Auth API is running',
         timestamp: new Date().toISOString(),
         service: 'aklat-auth-api',
-        version: '1.0.0'
+        version: '1.0.0',
+        origin: req.headers.origin || 'No origin header'
     });
 });
 
 // Register new user
 router.post('/register', async (req, res) => {
     try {
+        console.log('Registration request received from origin:', req.headers.origin);
+        console.log('Registration body:', { 
+            name: req.body.name, 
+            email: req.body.email ? req.body.email.substring(0, 10) + '...' : 'no email',
+            hasPassword: !!req.body.password 
+        });
+
         const { name, email, password } = req.body;
 
         // Validation
@@ -99,8 +80,8 @@ router.post('/register', async (req, res) => {
 
         // Create new user
         const user = new User({
-            name,
-            email: email.toLowerCase(),
+            name: name.trim(),
+            email: email.toLowerCase().trim(),
             password
         });
 
@@ -108,6 +89,8 @@ router.post('/register', async (req, res) => {
 
         // Generate token
         const token = generateToken(user._id);
+
+        console.log('User registered successfully:', user.email);
 
         res.status(201).json({
             success: true,
@@ -122,7 +105,7 @@ router.post('/register', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('Registration error:', error.message);
         res.status(500).json({
             success: false,
             message: 'Error registering user',
@@ -134,6 +117,8 @@ router.post('/register', async (req, res) => {
 // Login user
 router.post('/login', async (req, res) => {
     try {
+        console.log('Login request from origin:', req.headers.origin);
+        
         const { email, password } = req.body;
 
         // Validation
@@ -147,6 +132,7 @@ router.post('/login', async (req, res) => {
         // Find user
         const user = await User.findOne({ email: email.toLowerCase() });
         if (!user) {
+            console.log('Login failed: User not found for email:', email);
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password'
@@ -164,6 +150,7 @@ router.post('/login', async (req, res) => {
         // Verify password
         const isPasswordValid = await user.comparePassword(password);
         if (!isPasswordValid) {
+            console.log('Login failed: Invalid password for email:', email);
             return res.status(401).json({
                 success: false,
                 message: 'Invalid email or password'
@@ -172,6 +159,8 @@ router.post('/login', async (req, res) => {
 
         // Generate token
         const token = generateToken(user._id);
+
+        console.log('Login successful for user:', user.email);
 
         res.json({
             success: true,
@@ -186,7 +175,7 @@ router.post('/login', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('Login error:', error.message);
         res.status(500).json({
             success: false,
             message: 'Error logging in',
@@ -275,13 +264,7 @@ router.post('/forgot-password', async (req, res) => {
 
         const user = await User.findOne({ email: email.toLowerCase() });
         
-        // If user exists, you would:
-        // 1. Generate a reset token
-        // 2. Save it to the user document
-        // 3. Send email with reset link
-        // 4. Set expiration for the token
-        
-        // For now, always return success for security
+        // Always return success for security
         res.json({
             success: true,
             message: 'If an account exists with this email, a password reset link has been sent'
@@ -315,13 +298,7 @@ router.post('/reset-password', async (req, res) => {
             });
         }
 
-        // In a real implementation:
-        // 1. Verify the reset token
-        // 2. Check if it's expired
-        // 3. Find user by reset token
-        // 4. Update password
-        // 5. Clear reset token
-
+        // Placeholder for reset logic
         res.json({
             success: true,
             message: 'Password reset successful. Please login with your new password.'
@@ -339,6 +316,8 @@ router.post('/reset-password', async (req, res) => {
 // Google OAuth login
 router.post('/google', async (req, res) => {
     try {
+        console.log('Google OAuth request from origin:', req.headers.origin);
+        
         const { credential, email, name, picture, googleId } = req.body;
 
         let userPayload;
@@ -346,7 +325,6 @@ router.post('/google', async (req, res) => {
         // If credential (ID token) is provided, verify it
         if (credential) {
             try {
-                // Verify the Google ID token
                 const ticket = await client.verifyIdToken({
                     idToken: credential,
                     audience: process.env.GOOGLE_CLIENT_ID
@@ -361,7 +339,7 @@ router.post('/google', async (req, res) => {
                 });
             }
         } else if (email && googleId) {
-            // Fallback: OAuth2 flow - use provided user info
+            // Fallback: OAuth2 flow
             userPayload = {
                 sub: googleId,
                 email: email.toLowerCase(),
@@ -376,15 +354,7 @@ router.post('/google', async (req, res) => {
             });
         }
 
-        const { sub: userId, email: userEmail, name: userName, picture: userPicture, email_verified } = userPayload;
-
-        // Check if email is verified (for OAuth2 fallback, we assume it is)
-        if (email_verified === false) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email not verified by Google'
-            });
-        }
+        const { sub: userId, email: userEmail, name: userName, picture: userPicture } = userPayload;
 
         // Check if user already exists
         let user = await User.findOne({ 
@@ -395,17 +365,15 @@ router.post('/google', async (req, res) => {
         });
 
         if (user) {
-            // Update user if they logged in with Google before but now using email, or vice versa
+            // Update user
             if (!user.googleId && user.email === userEmail.toLowerCase()) {
                 user.googleId = userId;
                 user.provider = 'google';
                 user.isEmailVerified = true;
             }
-            // Update name if provided and different
             if (userName && user.name !== userName) {
                 user.name = userName;
             }
-            // Update picture if available
             if (userPicture && !user.picture) {
                 user.picture = userPicture;
             }
@@ -435,6 +403,8 @@ router.post('/google', async (req, res) => {
         // Generate token
         const token = generateToken(user._id);
 
+        console.log('Google login successful for user:', user.email);
+
         res.json({
             success: true,
             message: 'Google login successful',
@@ -458,14 +428,9 @@ router.post('/google', async (req, res) => {
     }
 });
 
-// Logout (client-side only - just returns success)
+// Logout
 router.post('/logout', authenticate, async (req, res) => {
     try {
-        // In a real implementation, you might:
-        // 1. Add token to blacklist
-        // 2. Clear session data
-        // 3. Log activity
-        
         res.json({
             success: true,
             message: 'Logged out successfully'
